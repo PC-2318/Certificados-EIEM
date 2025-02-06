@@ -1,12 +1,12 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
 import os
-import pandas as pd
-from PyPDF2 import PdfReader, PdfWriter
+import pandas as pd  # Para leer Excel
 from reportlab.pdfgen import canvas
+from PyPDF2 import PdfReader, PdfWriter
 from reportlab.lib.pagesizes import letter
 
-# 🔹 Crear la aplicación Flask
+# 🔹 Configuración de la aplicación Flask
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'clave_secreta'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///participantes.db'
@@ -23,27 +23,27 @@ class Participante(db.Model):
 
 # 🔹 Función para cargar participantes desde Excel
 def cargar_participantes():
-    if not os.path.exists("participantes.xlsx"):
-        print("No se encontró el archivo participantes.xlsx")
-        return
-    df = pd.read_excel("participantes.xlsx")
-    for _, row in df.iterrows():
-        if not Participante.query.filter_by(documento=row['Documento']).first():
-            nuevo_participante = Participante(
-                nombre=row['Nombre'], 
-                email=row['Email'], 
-                documento=row['Documento']
-            )
-            db.session.add(nuevo_participante)
-    db.session.commit()
-    print("Base de datos actualizada con participantes desde Excel")
+    if os.path.exists("participantes.xlsx"):
+        df = pd.read_excel("participantes.xlsx")  # Carga el archivo Excel
+        for _, row in df.iterrows():
+            if not Participante.query.filter_by(documento=str(row['documento'])).first():
+                nuevo = Participante(
+                    nombre=row['nombre'],
+                    email=row['email'],
+                    documento=str(row['documento'])  # Asegurarse de que el documento sea un string
+                )
+                db.session.add(nuevo)
+        db.session.commit()
+        print("✅ Participantes cargados desde Excel.")
+    else:
+        print("⚠️ No se encontró el archivo 'participantes.xlsx'.")
 
-# 🔹 Crear la base de datos y cargar los participantes desde Excel
+# 🔹 Crear la base de datos y cargar los datos de Excel
 with app.app_context():
     db.create_all()
-    cargar_participantes()
+    cargar_participantes()  # Se ejecuta al iniciar la aplicación
 
-# 🔹 Ruta principal (redirige a la página de descarga)
+# 🔹 Ruta principal: Redirige a la página de descarga
 @app.route('/')
 def home():
     return redirect(url_for('descargar'))
@@ -56,7 +56,7 @@ def descargar():
         participante = Participante.query.filter_by(documento=documento).first()
 
         if not participante:
-            flash("No se encontró un participante con ese documento en la base de datos.", "danger")
+            flash("❌ No se encontró un participante con ese documento.", "danger")
             return redirect(url_for('descargar'))
 
         # Ruta donde se guardará el certificado personalizado
@@ -69,7 +69,7 @@ def descargar():
 
 # 🔹 Función para Generar Certificado en PDF
 def generar_certificado(nombre, pdf_output):
-    certificado_base = "static/certificado_base.pdf"  # Asegúrate de que el archivo esté aquí
+    certificado_base = "static/certificado_base.pdf"  # Ruta del diseño base
 
     if not os.path.exists("certificados"):
         os.makedirs("certificados")
@@ -96,7 +96,7 @@ def generar_certificado(nombre, pdf_output):
     page.merge_page(overlay_reader.pages[0])
     writer.add_page(page)
 
-    # Guardar el certificado final con el nombre del participante
+    # Guardar el certificado final
     with open(pdf_output, "wb") as output_pdf:
         writer.write(output_pdf)
 

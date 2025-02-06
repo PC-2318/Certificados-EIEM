@@ -6,7 +6,7 @@ from reportlab.pdfgen import canvas
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.lib.pagesizes import letter
 
-# 🔹 Configuración de la aplicación Flask
+# Configuración de la aplicación Flask
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'clave_secreta'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///participantes.db'
@@ -14,23 +14,24 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# 🔹 Modelo de la base de datos
+# Modelo de la base de datos
 class Participante(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     documento = db.Column(db.String(50), unique=True, nullable=False)
 
-# 🔹 Función para cargar participantes desde Excel
+# Función para cargar participantes desde Excel
 def cargar_participantes():
-    if os.path.exists("participantes.xlsx"):
-        df = pd.read_excel("participantes.xlsx")  # Carga el archivo Excel
+    excel_path = "participantes.xlsx"
+    if os.path.exists(excel_path):
+        df = pd.read_excel(excel_path, dtype={"documento": str})  # Asegura que el documento sea un string
         for _, row in df.iterrows():
-            if not Participante.query.filter_by(documento=str(row['documento'])).first():
+            if not Participante.query.filter_by(documento=row['documento']).first():
                 nuevo = Participante(
                     nombre=row['nombre'],
                     email=row['email'],
-                    documento=str(row['documento'])  # Asegurarse de que el documento sea un string
+                    documento=row['documento']
                 )
                 db.session.add(nuevo)
         db.session.commit()
@@ -38,21 +39,21 @@ def cargar_participantes():
     else:
         print("⚠️ No se encontró el archivo 'participantes.xlsx'.")
 
-# 🔹 Crear la base de datos y cargar los datos de Excel
+# Crear la base de datos y cargar los datos de Excel
 with app.app_context():
     db.create_all()
     cargar_participantes()  # Se ejecuta al iniciar la aplicación
 
-# 🔹 Ruta principal: Redirige a la página de descarga
+# Ruta principal: Redirige a la página de descarga
 @app.route('/')
 def home():
     return redirect(url_for('descargar'))
 
-# 🔹 Ruta de Descarga del Certificado
+# Ruta de Descarga del Certificado
 @app.route('/descargar', methods=['GET', 'POST'])
 def descargar():
     if request.method == 'POST':
-        documento = request.form['documento']
+        documento = request.form['documento'].strip()  # Elimina espacios en blanco
         participante = Participante.query.filter_by(documento=documento).first()
 
         if not participante:
@@ -67,9 +68,13 @@ def descargar():
 
     return render_template('descargar.html')
 
-# 🔹 Función para Generar Certificado en PDF
+# Función para Generar Certificado en PDF
 def generar_certificado(nombre, pdf_output):
     certificado_base = "static/certificado_base.pdf"  # Ruta del diseño base
+
+    if not os.path.exists(certificado_base):
+        print("⚠️ No se encontró el archivo de base para el certificado.")
+        return
 
     if not os.path.exists("certificados"):
         os.makedirs("certificados")

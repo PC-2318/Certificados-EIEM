@@ -23,6 +23,11 @@ with app.app_context():
 
 # Ruta de Registro
 @app.route('/registro', methods=['GET', 'POST'])
+# Ruta principal (Redirige a la página de registro)
+@app.route('/')
+def home():
+    return redirect(url_for('registro'))
+
 def registro():
     if request.method == 'POST':
         nombre = request.form['nombre']

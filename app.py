@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
 import os
+import pandas as pd
 from reportlab.pdfgen import canvas
 
 # 🔹 Crear la aplicación Flask
@@ -21,6 +22,24 @@ class Participante(db.Model):
 # 🔹 Crear la base de datos si no existe
 with app.app_context():
     db.create_all()
+
+# 🔹 Cargar datos desde Excel a SQLite (Ejecutar una vez)
+def importar_datos_excel():
+    if os.path.exists("participantes.xlsx"):
+        df = pd.read_excel("participantes.xlsx")
+        for index, row in df.iterrows():
+            if not Participante.query.filter_by(documento=str(row['documento'])).first():
+                participante = Participante(
+                    nombre=row['nombre'],
+                    email=row['email'],
+                    documento=str(row['documento'])
+                )
+                db.session.add(participante)
+        db.session.commit()
+        print("Datos importados correctamente.")
+
+# Ejecutar la importación al iniciar la app
+importar_datos_excel()
 
 # 🔹 Ruta principal (redirige a la página de registro)
 @app.route('/')
@@ -52,7 +71,7 @@ def registro():
 @app.route('/descargar', methods=['GET', 'POST'])
 def descargar():
     if request.method == 'POST':
-        documento = request.form['documento']
+        documento = request.form['documento'].strip()
         participante = Participante.query.filter_by(documento=documento).first()
 
         if not participante:
@@ -106,3 +125,4 @@ def generar_certificado(nombre, pdf_output):
 
 if __name__ == "__main__":
     app.run(debug=True)
+

@@ -20,3 +20,46 @@
     </form>
 </body>
 </html>
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro</title>
+</head>
+<body>
+    <h2>Registro de Participantes</h2>
+    <form method="POST">
+        <!-- Campos de formulario -->
+        <input type="text" name="nombre" placeholder="Nombre" required>
+        <input type="email" name="email" placeholder="Email" required>
+        <input type="text" name="documento" placeholder="Documento" required>
+        <button type="submit">Registrar</button>
+    </form>
+
+    <!-- Mostrar todos los participantes -->
+    {% if participantes %}
+        <h3>Participantes registrados:</h3>
+        <ul>
+            {% for participante in participantes %}
+                <li>{{ participante.nombre }} - {{ participante.email }} - {{ participante.documento }}</li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>No hay participantes registrados aún.</p>
+    {% endif %}
+
+    <!-- Mostrar mensajes de éxito o error -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <ul>
+                {% for category, message in messages %}
+                    <li class="{{ category }}">{{ message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    {% endwith %}
+</body>
+</html>
+

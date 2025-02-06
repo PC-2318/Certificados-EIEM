@@ -2,7 +2,9 @@ from flask import Flask, render_template, request, redirect, url_for, flash, sen
 from flask_sqlalchemy import SQLAlchemy
 import os
 import pandas as pd
+from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
 
 # 🔹 Crear la aplicación Flask
 app = Flask(__name__)
@@ -19,63 +21,42 @@ class Participante(db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     documento = db.Column(db.String(50), unique=True, nullable=False)
 
-# 🔹 Crear la base de datos si no existe
+# 🔹 Función para cargar participantes desde Excel
+def cargar_participantes():
+    if not os.path.exists("participantes.xlsx"):
+        print("No se encontró el archivo participantes.xlsx")
+        return
+    df = pd.read_excel("participantes.xlsx")
+    for _, row in df.iterrows():
+        if not Participante.query.filter_by(documento=row['Documento']).first():
+            nuevo_participante = Participante(
+                nombre=row['Nombre'], 
+                email=row['Email'], 
+                documento=row['Documento']
+            )
+            db.session.add(nuevo_participante)
+    db.session.commit()
+    print("Base de datos actualizada con participantes desde Excel")
+
+# 🔹 Crear la base de datos y cargar los participantes desde Excel
 with app.app_context():
     db.create_all()
+    cargar_participantes()
 
-# 🔹 Cargar datos desde Excel a SQLite (Ejecutar una vez)
-def importar_datos_excel():
-    if os.path.exists("participantes.xlsx"):
-        df = pd.read_excel("participantes.xlsx")
-        for index, row in df.iterrows():
-            if not Participante.query.filter_by(documento=str(row['documento'])).first():
-                participante = Participante(
-                    nombre=row['nombre'],
-                    email=row['email'],
-                    documento=str(row['documento'])
-                )
-                db.session.add(participante)
-        db.session.commit()
-        print("Datos importados correctamente.")
-
-# Ejecutar la importación al iniciar la app
-importar_datos_excel()
-
-# 🔹 Ruta principal (redirige a la página de registro)
+# 🔹 Ruta principal (redirige a la página de descarga)
 @app.route('/')
 def home():
-    return redirect(url_for('registro'))
-
-# 🔹 Ruta de Registro
-@app.route('/registro', methods=['GET', 'POST'])
-def registro():
-    if request.method == 'POST':
-        nombre = request.form['nombre']
-        email = request.form['email']
-        documento = request.form['documento']
-
-        if Participante.query.filter_by(documento=documento).first():
-            flash("Este documento ya está registrado.", "danger")
-            return redirect(url_for('registro'))
-
-        nuevo_participante = Participante(nombre=nombre, email=email, documento=documento)
-        db.session.add(nuevo_participante)
-        db.session.commit()
-
-        flash("Registro exitoso. Ahora puedes descargar tu certificado.", "success")
-        return redirect(url_for('descargar'))
-
-    return render_template('registro.html')
+    return redirect(url_for('descargar'))
 
 # 🔹 Ruta de Descarga del Certificado
 @app.route('/descargar', methods=['GET', 'POST'])
 def descargar():
     if request.method == 'POST':
-        documento = request.form['documento'].strip()
+        documento = request.form['documento']
         participante = Participante.query.filter_by(documento=documento).first()
 
         if not participante:
-            flash("No se encontró un participante con ese documento.", "danger")
+            flash("No se encontró un participante con ese documento en la base de datos.", "danger")
             return redirect(url_for('descargar'))
 
         # Ruta donde se guardará el certificado personalizado
@@ -87,10 +68,6 @@ def descargar():
     return render_template('descargar.html')
 
 # 🔹 Función para Generar Certificado en PDF
-from PyPDF2 import PdfReader, PdfWriter
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
-
 def generar_certificado(nombre, pdf_output):
     certificado_base = "static/certificado_base.pdf"  # Asegúrate de que el archivo esté aquí
 
@@ -125,4 +102,3 @@ def generar_certificado(nombre, pdf_output):
 
 if __name__ == "__main__":
     app.run(debug=True)
-

@@ -18,7 +18,7 @@ db = SQLAlchemy(app)
 class Participante(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
+    email = db.Column(db.String(120), nullable=True)
     documento = db.Column(db.String(50), unique=True, nullable=False)
 
 # Función para cargar participantes desde Excel
@@ -26,6 +26,7 @@ def cargar_participantes():
     excel_path = "participantes.xlsx"
     if os.path.exists(excel_path):
         df = pd.read_excel(excel_path, dtype={"documento": str})  # Asegura que el documento sea un string
+        print("Columnas en el Excel:", df.columns.tolist())
         for _, row in df.iterrows():
             if not Participante.query.filter_by(documento=row['documento']).first():
                 nuevo = Participante(
@@ -42,7 +43,10 @@ def cargar_participantes():
 # Crear la base de datos y cargar los datos de Excel
 with app.app_context():
     db.create_all()
-    cargar_participantes()  # Se ejecuta al iniciar la aplicación
+    try:
+        cargar_participantes()  # Se ejecuta al iniciar la aplicación
+    except Exception as e:
+        print(f"Error al cargar participantes: {e}")
 
 # Ruta principal: Redirige a la página de descarga
 @app.route('/')

@@ -23,7 +23,7 @@ class Participante(db.Model):
 
 # Función para cargar participantes desde Excel
 def cargar_participantes():
-    excel_path = "participantes.xlsx"
+    excel_path = os.path.join(os.path.dirname(__file__), "participantes.xlsx")
     if os.path.exists(excel_path):
         df = pd.read_excel(excel_path, dtype={"documento": str})  # Asegura que el documento sea un string
         print("Columnas en el Excel:", df.columns.tolist())

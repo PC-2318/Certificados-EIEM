@@ -93,7 +93,7 @@ def generar_certificado(nombre, pdf_output):
 
     # Ajustar la posición del nombre en el certificado
     x_pos = 350  # Cambia este valor para mover el nombre a la derecha o izquierda
-    y_pos = 215  # Cambia este valor para subir o bajar el nombre
+    y_pos = 200  # Cambia este valor para subir o bajar el nombre
 
     c.setFont("Helvetica-Bold", 30)  # Tamaño y tipo de letra
     c.drawCentredString(x_pos, y_pos, nombre)  # Ubicación del nombre en el certificado

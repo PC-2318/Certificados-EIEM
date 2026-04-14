@@ -1,13 +1,12 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
 import os
-import pandas as pd
+import pandas as pd  # Para leer Excel
 from reportlab.pdfgen import canvas
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.lib.pagesizes import letter
-import re
 
-# Configuración de la aplicación Flask=
+# Configuración de la aplicación Flask
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'clave_secreta'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///participantes.db'
@@ -22,145 +21,93 @@ class Participante(db.Model):
     email = db.Column(db.String(120), nullable=True)
     documento = db.Column(db.String(50), unique=True, nullable=False)
 
-# =========================
-# VALIDACIÓN FLEXIBLE
-# =========================
-def validar_documento(doc):
-    patron = r'^[A-Za-z0-9ÁÉÍÓÚáéíóúÑñÜü\-_.]{1,50}$'
-    return re.match(patron, doc)
-
-# =========================
-# SANITIZAR NOMBRE ARCHIVO
-# =========================
-def sanitizar_documento(doc):
-    return re.sub(r'[^A-Za-z0-9ÁÉÍÓÚáéíóúÑñÜü\-_.]', '', doc)
-
-# =========================
-# CARGAR PARTICIPANTES
-# =========================
+# Función para cargar participantes desde Excel
 def cargar_participantes():
     excel_path = os.path.join(os.path.dirname(__file__), "participantes.xlsx")
-
     if os.path.exists(excel_path):
-        df = pd.read_excel(excel_path, dtype={"documento": str})
-
-        # 🔥 Normalizar nombres de columnas
-        df.columns = df.columns.str.strip().str.lower()
-
-        print("Columnas detectadas:", df.columns.tolist())
-
-        # Validar que existan las columnas necesarias
-        if 'nombre' not in df.columns or 'documento' not in df.columns:
-            print("❌ ERROR: El Excel debe tener columnas 'nombre' y 'documento'")
-            return
-
+        df = pd.read_excel(excel_path, dtype={"documento": str})  # Asegura que el documento sea un string
+        print("Columnas en el Excel:", df.columns.tolist())
         for _, row in df.iterrows():
-            doc = str(row['documento']).strip()
-
-            if not doc:
-                continue  # evitar registros vacíos
-
-            if not Participante.query.filter_by(documento=doc).first():
+            if not Participante.query.filter_by(documento=row['documento']).first():
                 nuevo = Participante(
-                    nombre=str(row['nombre']).strip(),
-                    email=str(row['email']).strip() if 'email' in df.columns and pd.notna(row.get('email')) else None,
-                    documento=doc
+                    nombre=row['nombre'],
+                    email=row['email'],
+                    documento=row['documento']
                 )
                 db.session.add(nuevo)
-
         db.session.commit()
-        print("✅ Participantes cargados correctamente.")
+        print("✅ Participantes cargados desde Excel.")
     else:
         print("⚠️ No se encontró el archivo 'participantes.xlsx'.")
 
-# =========================
-# INICIALIZACIÓN
-# =========================
+# Crear la base de datos y cargar los datos de Excel
 with app.app_context():
     db.create_all()
     try:
-        cargar_participantes()
+        cargar_participantes()  # Se ejecuta al iniciar la aplicación
     except Exception as e:
-        print(f"❌ Error al cargar participantes: {e}")
+        print(f"Error al cargar participantes: {e}")
 
-# =========================
-# RUTAS
-# =========================
+# Ruta principal: Redirige a la página de descarga
 @app.route('/')
 def home():
     return redirect(url_for('descargar'))
 
+# Ruta de Descarga del Certificado
 @app.route('/descargar', methods=['GET', 'POST'])
 def descargar():
     if request.method == 'POST':
-        documento = request.form['documento'].strip()
-
-        # Validación flexible
-        if not validar_documento(documento):
-            flash("❌ Documento inválido.", "danger")
-            return redirect(url_for('descargar'))
-
-        # Búsqueda case-insensitive
-        participante = Participante.query.filter(
-            db.func.lower(Participante.documento) == documento.lower()
-        ).first()
+        documento = request.form['documento'].strip()  # Elimina espacios en blanco
+        participante = Participante.query.filter_by(documento=documento).first()
 
         if not participante:
             flash("❌ No se encontró un participante con ese documento.", "danger")
             return redirect(url_for('descargar'))
 
-        documento_seguro = sanitizar_documento(participante.documento)
-        pdf_output = f"certificados/{documento_seguro}.pdf"
-
-        # No regenerar si ya existe
-        if not os.path.exists(pdf_output):
-            generar_certificado(participante.nombre, pdf_output)
+        # Ruta donde se guardará el certificado personalizado
+        pdf_output = f"certificados/{participante.documento}.pdf"
+        generar_certificado(participante.nombre, pdf_output)
 
         return send_file(pdf_output, as_attachment=True)
 
     return render_template('descargar.html')
 
-# =========================
-# GENERAR CERTIFICADO
-# =========================
+# Función para Generar Certificado en PDF
 def generar_certificado(nombre, pdf_output):
-    certificado_base = "static/certificado_base.pdf"
+    certificado_base = "static/certificado_base.pdf"  # Ruta del diseño base
 
     if not os.path.exists(certificado_base):
-        print("⚠️ No se encontró el certificado base.")
+        print("⚠️ No se encontró el archivo de base para el certificado.")
         return
 
     if not os.path.exists("certificados"):
         os.makedirs("certificados")
 
+    # Leer el PDF base
     reader = PdfReader(certificado_base)
     writer = PdfWriter()
 
+    # Crear un PDF en blanco para superponer el texto
     overlay_path = "certificados/temp_overlay.pdf"
     c = canvas.Canvas(overlay_path, pagesize=letter)
 
-    # Posición del nombre
-    x_pos = 340
-    y_pos = 143
+    # Ajustar la posición del nombre en el certificado
+    x_pos = 340  # Cambia este valor para mover el nombre a la derecha o izquierda
+    y_pos = 143  # Cambia este valor para subir o bajar el nombre
 
-    c.setFont("Helvetica-Bold", 25)
-    c.drawCentredString(x_pos, y_pos, nombre)
+    c.setFont("Helvetica-Bold", 25)  # Tamaño y tipo de letra
+    c.drawCentredString(x_pos, y_pos, nombre)  # Ubicación del nombre en el certificado
     c.save()
 
+    # Combinar el PDF base con el texto agregado
     overlay_reader = PdfReader(overlay_path)
     page = reader.pages[0]
     page.merge_page(overlay_reader.pages[0])
     writer.add_page(page)
 
+    # Guardar el certificado final
     with open(pdf_output, "wb") as output_pdf:
         writer.write(output_pdf)
 
-    # Limpiar archivo temporal
-    if os.path.exists(overlay_path):
-        os.remove(overlay_path)
-
-# ====================================
-# EJECUCIÓN
-# =========================
 if __name__ == "__main__":
     app.run(debug=True)

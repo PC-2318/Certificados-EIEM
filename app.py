@@ -159,7 +159,7 @@ def generar_certificado(nombre, pdf_output):
     if os.path.exists(overlay_path):
         os.remove(overlay_path)
 
-# =========================
+# =================================
 # EJECUCIÓN
 # =========================
 if __name__ == "__main__":

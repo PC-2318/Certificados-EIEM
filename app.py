@@ -7,7 +7,7 @@ from PyPDF2 import PdfReader, PdfWriter
 from reportlab.lib.pagesizes import letter
 import re
 
-# Configuración de la aplicación Flask
+# Configuración de la aplicación Flask====
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'clave_secreta'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///participantes.db'
@@ -159,7 +159,7 @@ def generar_certificado(nombre, pdf_output):
     if os.path.exists(overlay_path):
         os.remove(overlay_path)
 
-# =================================
+# ====================================
 # EJECUCIÓN
 # =========================
 if __name__ == "__main__":

@@ -1,10 +1,11 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_sqlalchemy import SQLAlchemy
 import os
-import pandas as pd  # Para leer Excel
+import pandas as pd
 from reportlab.pdfgen import canvas
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.lib.pagesizes import letter
+import re
 
 # Configuración de la aplicación Flask
 app = Flask(__name__)
@@ -21,93 +22,135 @@ class Participante(db.Model):
     email = db.Column(db.String(120), nullable=True)
     documento = db.Column(db.String(50), unique=True, nullable=False)
 
-# Función para cargar participantes desde Excel
+# =========================
+# VALIDACIÓN FLEXIBLE (MEJORADA)
+# =========================
+def validar_documento(doc):
+    patron = r'^[A-Za-z0-9ÁÉÍÓÚáéíóúÑñÜü\-\._@]{1,50}$'
+    return re.match(patron, doc)
+
+# =========================
+# SANITIZAR NOMBRE ARCHIVO
+# =========================
+def sanitizar_documento(doc):
+    return re.sub(r'[^A-Za-z0-9ÁÉÍÓÚáéíóúÑñÜü\-\._]', '', doc)
+
+# =========================
+# CARGAR PARTICIPANTES
+# =========================
 def cargar_participantes():
     excel_path = os.path.join(os.path.dirname(__file__), "participantes.xlsx")
+
     if os.path.exists(excel_path):
-        df = pd.read_excel(excel_path, dtype={"documento": str})  # Asegura que el documento sea un string
+        df = pd.read_excel(excel_path, dtype={"documento": str})
+
+        # 🔥 NORMALIZAR COLUMNAS
+        df.columns = df.columns.str.strip().str.lower()
+
         print("Columnas en el Excel:", df.columns.tolist())
+
         for _, row in df.iterrows():
-            if not Participante.query.filter_by(documento=row['documento']).first():
+            doc = str(row['documento']).strip()
+
+            if not doc:
+                continue
+
+            if not Participante.query.filter_by(documento=doc).first():
                 nuevo = Participante(
-                    nombre=row['nombre'],
-                    email=row['email'],
-                    documento=row['documento']
+                    nombre=str(row['nombre']).strip(),
+                    email=str(row['email']).strip() if 'email' in df.columns else None,
+                    documento=doc
                 )
                 db.session.add(nuevo)
+
         db.session.commit()
         print("✅ Participantes cargados desde Excel.")
     else:
         print("⚠️ No se encontró el archivo 'participantes.xlsx'.")
 
-# Crear la base de datos y cargar los datos de Excel
+# Crear base de datos
 with app.app_context():
     db.create_all()
     try:
-        cargar_participantes()  # Se ejecuta al iniciar la aplicación
+        cargar_participantes()
     except Exception as e:
         print(f"Error al cargar participantes: {e}")
 
-# Ruta principal: Redirige a la página de descarga
+# =========================
+# RUTAS
+# =========================
 @app.route('/')
 def home():
     return redirect(url_for('descargar'))
 
-# Ruta de Descarga del Certificado
 @app.route('/descargar', methods=['GET', 'POST'])
 def descargar():
     if request.method == 'POST':
-        documento = request.form['documento'].strip()  # Elimina espacios en blanco
-        participante = Participante.query.filter_by(documento=documento).first()
+        documento = request.form['documento'].strip()
+
+        # VALIDACIÓN FLEXIBLE
+        if not validar_documento(documento):
+            flash("❌ Documento inválido.", "danger")
+            return redirect(url_for('descargar'))
+
+        # BÚSQUEDA CASE-INSENSITIVE
+        participante = Participante.query.filter(
+            db.func.lower(Participante.documento) == documento.lower()
+        ).first()
 
         if not participante:
             flash("❌ No se encontró un participante con ese documento.", "danger")
             return redirect(url_for('descargar'))
 
-        # Ruta donde se guardará el certificado personalizado
-        pdf_output = f"certificados/{participante.documento}.pdf"
-        generar_certificado(participante.nombre, pdf_output)
+        documento_seguro = sanitizar_documento(participante.documento)
+        pdf_output = f"certificados/{documento_seguro}.pdf"
+
+        if not os.path.exists(pdf_output):
+            generar_certificado(participante.nombre, pdf_output)
 
         return send_file(pdf_output, as_attachment=True)
 
     return render_template('descargar.html')
 
-# Función para Generar Certificado en PDF
+# =========================
+# GENERAR CERTIFICADO
+# =========================
 def generar_certificado(nombre, pdf_output):
-    certificado_base = "static/certificado_base.pdf"  # Ruta del diseño base
+    certificado_base = "static/certificado_base.pdf"
 
     if not os.path.exists(certificado_base):
-        print("⚠️ No se encontró el archivo de base para el certificado.")
+        print("⚠️ No se encontró el archivo base.")
         return
 
     if not os.path.exists("certificados"):
         os.makedirs("certificados")
 
-    # Leer el PDF base
     reader = PdfReader(certificado_base)
     writer = PdfWriter()
 
-    # Crear un PDF en blanco para superponer el texto
     overlay_path = "certificados/temp_overlay.pdf"
     c = canvas.Canvas(overlay_path, pagesize=letter)
 
-    # Ajustar la posición del nombre en el certificado
-    x_pos = 340  # Cambia este valor para mover el nombre a la derecha o izquierda
-    y_pos = 143  # Cambia este valor para subir o bajar el nombre
+    x_pos = 340
+    y_pos = 143
 
-    c.setFont("Helvetica-Bold", 25)  # Tamaño y tipo de letra
-    c.drawCentredString(x_pos, y_pos, nombre)  # Ubicación del nombre en el certificado
+    c.setFont("Helvetica-Bold", 25)
+    c.drawCentredString(x_pos, y_pos, nombre)
     c.save()
 
-    # Combinar el PDF base con el texto agregado
     overlay_reader = PdfReader(overlay_path)
     page = reader.pages[0]
     page.merge_page(overlay_reader.pages[0])
     writer.add_page(page)
 
-    # Guardar el certificado final
     with open(pdf_output, "wb") as output_pdf:
         writer.write(output_pdf)
 
+    if os.path.exists(overlay_path):
+        os.remove(overlay_path)
+
+# =========================
+# EJECUCIÓN
+# =========================
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()
